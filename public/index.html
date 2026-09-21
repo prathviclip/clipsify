@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clipsify Creator Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { appBg: '#F4F5F9', cardBg: '#FFFFFF', accentViolet: '#7C3AED', textDark: '#1E1B4B', textSub: '#64748B' } } }
+    }
+  </script>
+</head>
+<body class="bg-appBg text-textDark font-sans min-h-screen pb-24">
+
+  <header class="max-w-md mx-auto px-4 pt-6 pb-2 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-2xl bg-violet-600 flex items-center justify-center text-white font-bold">C</div>
+      <div>
+        <h1 class="text-lg font-extrabold leading-tight">Clipsify</h1>
+        <p class="text-[11px] text-textSub">Creator Hub</p>
+      </div>
+    </div>
+    <div id="authWidget">
+      <a href="/api/auth/discord" id="loginBtn" class="bg-[#5865F2] text-white text-xs font-bold px-3.5 py-2 rounded-full flex items-center gap-2">
+        <i class="fa-brands fa-discord"></i> Login
+      </a>
+      <div id="userProfile" class="hidden flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-slate-100 shadow-sm">
+        <img id="userAvatar" src="" class="w-6 h-6 rounded-full" alt="Avatar">
+        <span id="usernameDisplay" class="text-xs font-bold">---</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto px-4 pt-4 space-y-5">
+    <div id="viewClipper" class="space-y-5">
+      <div id="campaignsContainer" class="space-y-3"></div>
+
+      <div id="submissionCard" class="hidden bg-cardBg rounded-[28px] p-5 shadow-sm border space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 id="selectedCampTitle" class="text-sm font-bold">---</h3>
+          <button onclick="closeSubmission()" class="text-xs text-textSub">Cancel</button>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-2xl space-y-2 border">
+          <button onclick="generateCode()" class="text-[11px] text-accentViolet font-bold underline">Generate 6-Digit Code</button>
+          <code id="bioCodeDisplay" class="text-xs font-mono font-bold block">---</code>
+        </div>
+        <div class="space-y-2">
+          <input type="url" id="videoLinkInput" placeholder="Paste TikTok or Shorts link" class="w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-xs">
+          <button onclick="submitClipForCampaign()" class="w-full bg-accentViolet text-white font-bold py-2.5 rounded-xl text-xs">Verify & Submit</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="viewAdmin" class="hidden bg-cardBg rounded-[28px] p-5 border space-y-3">
+      <h2 class="text-sm font-bold">Admin Queue</h2>
+      <div id="adminQueue" class="space-y-3"></div>
+    </div>
+  </main>
+
+  <nav class="fixed bottom-4 left-4 right-4 max-w-md mx-auto bg-white/90 backdrop-blur-md rounded-full p-1.5 border flex justify-between z-50">
+    <button onclick="switchTab('clipper')" class="flex-1 py-2 rounded-full text-xs font-bold text-accentViolet">Clipper View</button>
+    <button onclick="switchTab('admin')" class="flex-1 py-2 rounded-full text-xs font-bold text-textSub">Admin Queue</button>
+  </nav>
+
+  <script>
+    let activeCampaigns = [];
+    let selectedCampaignId = null;
+
+    async function checkAuth() {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.authenticated) {
+        document.getElementById('loginBtn').classList.add('hidden');
+        document.getElementById('userProfile').classList.remove('hidden');
+        document.getElementById('usernameDisplay').innerText = data.user.username;
+        document.getElementById('userAvatar').src = data.user.avatar;
+      }
+    }
+
+    async function fetchCampaigns() {
+      const res = await fetch('/api/campaigns');
+      const data = await res.json();
+      activeCampaigns = data.campaigns;
+      document.getElementById('campaignsContainer').innerHTML = activeCampaigns.map(camp => `
+        <div class="bg-cardBg rounded-[24px] p-4 border space-y-3">
+          <h3 class="text-sm font-bold">${camp.title}</h3>
+          <p class="text-xs text-emerald-600 font-bold">${camp.payout}</p>
+          <button onclick="selectCampaign('${camp.id}')" class="w-full bg-textDark text-white font-bold py-2 rounded-xl text-xs">Join & Submit</button>
+        </div>
+      `).join('');
+    }
+
+    function selectCampaign(id) {
+      selectedCampaignId = id;
+      document.getElementById('selectedCampTitle').innerText = activeCampaigns.find(c => c.id === id).title;
+      document.getElementById('submissionCard').classList.remove('hidden');
+    }
+
+    function closeSubmission() { document.getElementById('submissionCard').classList.add('hidden'); }
+
+    async function generateCode() {
+      const res = await fetch('/api/generate-code', { method: 'POST' });
+      const data = await res.json();
+      if (data.error) return alert("🔴 " + data.error);
+      document.getElementById('bioCodeDisplay').innerText = data.code;
+    }
+
+    async function submitClipForCampaign() {
+      const videoUrl = document.getElementById('videoLinkInput').value;
+      const res = await fetch('/api/submit-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId: selectedCampaignId, videoUrl })
+      });
+      const data = await res.json();
+      if (data.success) { alert("🟢 " + data.message); closeSubmission(); } 
+      else { alert("🔴 " + data.error); }
+    }
+
+    async function fetchAdminQueue() {
+      const res = await fetch('/api/admin/submissions');
+      const data = await res.json();
+      document.getElementById('adminQueue').innerHTML = (data.submissions || []).map(sub => `
+        <div class="p-3.5 rounded-2xl bg-slate-50 border space-y-2">
+          <p class="text-xs font-bold">${sub.campaignTitle} (@${sub.discordUsername})</p>
+          <a href="${sub.videoUrl}" target="_blank" class="text-[11px] text-accentViolet underline block truncate">${sub.videoUrl}</a>
+        </div>
+      `).join('');
+    }
+
+    function switchTab(tab) {
+      if (tab === 'clipper') {
+        document.getElementById('viewClipper').classList.remove('hidden');
+        document.getElementById('viewAdmin').classList.add('hidden');
+      } else {
+        document.getElementById('viewClipper').classList.add('hidden');
+        document.getElementById('viewAdmin').classList.remove('hidden');
+        fetchAdminQueue();
+      }
+    }
+
+    checkAuth();
+    fetchCampaigns();
+  </script>
+</body>
+</html>
+
